@@ -1,147 +1,111 @@
 <?php
-ob_start();
-session_start();
-require_once __DIR__ . "/config/database.php";
+    ob_start();
+    session_start();
+    require_once __DIR__ . "/config/database.php";
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: " . BASE_URL . "login.php");
-    exit;
-}
+    if (!isset($_SESSION['user_id'])) {
+        header("Location: " . BASE_URL . "login.php");
+        exit;
+    }
 
-$user_id = (int)$_SESSION['user_id'];
+    $user_id = (int)$_SESSION['user_id'];
 
-// Fetch cart items
-$stmt = mysqli_prepare($conn,
-    "SELECT c.id AS cart_id, c.quantity,
-            p.id AS product_id, p.name, 
-            p.price, p.image, p.stocks
-     FROM cart c
-     JOIN products p ON c.product_id = p.id
-     WHERE c.user_id = ?
-     ORDER BY c.id DESC");
-mysqli_stmt_bind_param($stmt, 'i', $user_id);
-mysqli_stmt_execute($stmt);
-$cartItems = mysqli_fetch_all(
-    mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
-mysqli_stmt_close($stmt);
+    // Fetch cart items
+    // CORRECT ✅
+    $stmt = mysqli_prepare($conn, "SELECT c.id AS cart_id, c.quantity, p.id AS product_id, p.name, p.price, p.image, p.stocks FROM cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ? ORDER BY c.id DESC");
+    mysqli_stmt_bind_param($stmt, 'i', $user_id);
+    mysqli_stmt_execute($stmt);
+    $cartItems = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+    mysqli_stmt_close($stmt);
 
-if (empty($cartItems)) {
-    header("Location: " . BASE_URL . "cart.php");
-    exit;
-}
+    if (empty($cartItems)) {
+        header("Location: " . BASE_URL . "cart.php");
+        exit;
+    }
 
-// Calculate totals
-$subtotal = 0;
-foreach ($cartItems as $item) {
-    $subtotal += $item['price'] * $item['quantity'];
-}
-$shipping = $subtotal >= 1000 ? 0 : 80;
-$total    = $subtotal + $shipping;
+    // Calculate totals
+    $subtotal = 0;
+    foreach ($cartItems as $item) {
+        $subtotal += $item['price'] * $item['quantity'];
+    }
+    $shipping = $subtotal >= 1000 ? 0 : 80;
+    $total    = $subtotal + $shipping;
 
-// Fetch user details
-$ustmt = mysqli_prepare($conn,
-    "SELECT fullname, email FROM users WHERE id = ?");
-mysqli_stmt_bind_param($ustmt, 'i', $user_id);
-mysqli_stmt_execute($ustmt);
-$user = mysqli_fetch_assoc(mysqli_stmt_get_result($ustmt));
-mysqli_stmt_close($ustmt);
+    // Fetch user details
+    $ustmt = mysqli_prepare($conn, "SELECT fullname, email FROM users WHERE id = ?");
+    mysqli_stmt_bind_param($ustmt, 'i', $user_id);
+    mysqli_stmt_execute($ustmt);
+    $user = mysqli_fetch_assoc(mysqli_stmt_get_result($ustmt));
+    mysqli_stmt_close($ustmt);
 
-$error = "";
+    $error = "";
 
-// ── Handle POST before ANY HTML output ──
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $fullname = trim($_POST['fullname']);
-    $email    = trim($_POST['email']);
-    $phone    = trim($_POST['phone']);
-    $address  = trim($_POST['address']);
-    $city     = trim($_POST['city']);
-    $zip      = trim($_POST['zip'] ?? '');
-    $payment  = $_POST['payment'] ?? 'cod';
+    // ── Handle POST before ANY HTML output ──
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $fullname = trim($_POST['fullname']);
+        $email = trim($_POST['email']);
+        $phone = trim($_POST['phone']);
+        $address = trim($_POST['address']);
+        $city = trim($_POST['city']);
+        $zip = trim($_POST['zip'] ?? '');
+        $payment = $_POST['payment'] ?? 'cod';
 
-    if (empty($fullname) || empty($address) ||
-        empty($city)     || empty($phone)) {
-        $error = "Please fill in all required fields.";
-    } else {
-        $full_address = "$address, $city" . ($zip ? " $zip" : "");
-
-        mysqli_begin_transaction($conn);
-
-        try {
-            // Check stock
-            foreach ($cartItems as $item) {
-                $scheck = mysqli_prepare($conn,
-                    "SELECT stocks FROM products WHERE id = ?");
-                mysqli_stmt_bind_param($scheck, 'i',
-                    $item['product_id']);
-                mysqli_stmt_execute($scheck);
-                $srow = mysqli_fetch_assoc(
-                    mysqli_stmt_get_result($scheck));
-                mysqli_stmt_close($scheck);
-
-                if ($srow['stocks'] < $item['quantity']) {
-                    throw new Exception(
-                        "Sorry, \"{$item['name']}\" only has " .
-                        "{$srow['stocks']} left in stock.");
+        if (empty($fullname) || empty($address) ||
+            empty($city)     || empty($phone)) {
+            $error = "Please fill in all required fields.";
+        } else {
+            $full_address = "$address, $city" . ($zip ? " $zip" : "");
+            mysqli_begin_transaction($conn);
+            try {
+                // Check stock
+                foreach ($cartItems as $item) {
+                    $scheck = mysqli_prepare($conn, "SELECT stocks FROM products WHERE id = ?");
+                    mysqli_stmt_bind_param($scheck, 'i', $item['product_id']);
+                    mysqli_stmt_execute($scheck);
+                    $srow = mysqli_fetch_assoc(mysqli_stmt_get_result($scheck));
+                    mysqli_stmt_close($scheck);
+                    if ($srow['stocks'] < $item['quantity']) {
+                        throw new Exception("Sorry, \"{$item['name']}\" only has " . "{$srow['stocks']} left in stock.");
+                    }
                 }
+
+                // Insert order
+                $ostmt = mysqli_prepare($conn, "INSERT INTO orders(user_id, total, status, address) VALUES (?, ?, 'pending', ?)");
+                mysqli_stmt_bind_param($ostmt, 'ids', $user_id, $total, $full_address);
+                mysqli_stmt_execute($ostmt);
+                $order_id = mysqli_insert_id($conn);
+                mysqli_stmt_close($ostmt);
+
+                // Insert order items + deduct stock
+                foreach ($cartItems as $item) {
+                    $istmt = mysqli_prepare($conn, "INSERT INTO order_items(order_id, product_id, quantity, price) VALUES (?, ?, ?, ?)");
+                    mysqli_stmt_bind_param($istmt, 'iiid', $order_id, $item['product_id'], $item['quantity'], $item['price']);
+                    mysqli_stmt_execute($istmt);
+                    mysqli_stmt_close($istmt);
+                    $dstmt = mysqli_prepare($conn, "UPDATE products SET stocks = stocks - ? WHERE id = ?");
+                    mysqli_stmt_bind_param($dstmt, 'ii', $item['quantity'], $item['product_id']);
+                    mysqli_stmt_execute($dstmt);
+                    mysqli_stmt_close($dstmt);
+                }
+
+                // Clear cart
+                $clstmt = mysqli_prepare($conn, "DELETE FROM cart WHERE user_id = ?");
+                mysqli_stmt_bind_param($clstmt, 'i', $user_id);
+                mysqli_stmt_execute($clstmt);
+                mysqli_stmt_close($clstmt);
+                mysqli_commit($conn);
+
+                $successUrl = BASE_URL . "order_success.php?id=" . $order_id;?>
+                <script>window.location.href = '<?php echo $successUrl; ?>';</script>
+                <?php exit; 
+
+            } catch (Exception $e) {
+                mysqli_rollback($conn);
+                $error = $e->getMessage();
             }
-
-            // Insert order
-            $ostmt = mysqli_prepare($conn,
-                "INSERT INTO orders 
-                    (user_id, total, status, address)
-                 VALUES (?, ?, 'pending', ?)");
-            mysqli_stmt_bind_param($ostmt, 'ids',
-                $user_id, $total, $full_address);
-            mysqli_stmt_execute($ostmt);
-            $order_id = mysqli_insert_id($conn);
-            mysqli_stmt_close($ostmt);
-
-            // Insert order items + deduct stock
-            foreach ($cartItems as $item) {
-                $istmt = mysqli_prepare($conn,
-                    "INSERT INTO order_items
-                        (order_id, product_id, quantity, price)
-                     VALUES (?, ?, ?, ?)");
-                mysqli_stmt_bind_param($istmt, 'iiid',
-                    $order_id,
-                    $item['product_id'],
-                    $item['quantity'],
-                    $item['price']);
-                mysqli_stmt_execute($istmt);
-                mysqli_stmt_close($istmt);
-
-                $dstmt = mysqli_prepare($conn,
-                    "UPDATE products
-                     SET stocks = stocks - ?
-                     WHERE id = ?");
-                mysqli_stmt_bind_param($dstmt, 'ii',
-                    $item['quantity'],
-                    $item['product_id']);
-                mysqli_stmt_execute($dstmt);
-                mysqli_stmt_close($dstmt);
-            }
-
-            // Clear cart
-            $clstmt = mysqli_prepare($conn,
-                "DELETE FROM cart WHERE user_id = ?");
-            mysqli_stmt_bind_param($clstmt, 'i', $user_id);
-            mysqli_stmt_execute($clstmt);
-            mysqli_stmt_close($clstmt);
-
-            mysqli_commit($conn);
-
-            // Clean buffer then redirect
-            ob_end_clean();
-            header("Location: " . BASE_URL . "order_success.php?id=" . $order_id);
-            exit;
-
-        } catch (Exception $e) {
-            mysqli_rollback($conn);
-            $error = $e->getMessage();
         }
     }
-}
-// ── Only reach here if GET request or validation failed ──
+    // ── Only reach here if GET request or validation failed ──
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -149,10 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout — ShopGreen</title>
-    <link rel="stylesheet"
-          href="<?php echo BASE_URL; ?>assets/css/style.css">
-    <link rel="stylesheet"
-          href="<?php echo BASE_URL; ?>assets/css/checkout.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/style.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/checkout.css">
 </head>
 <body>
     <?php include 'includes/navbar.php'; ?>

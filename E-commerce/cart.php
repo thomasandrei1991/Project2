@@ -206,76 +206,71 @@
         <?php include 'includes/footer.php'; ?>
 
         <script>
-            // Store prices for JS total recalculation
+            const BASE_URL = '<?php echo BASE_URL; ?>';
+
             const prices = {
                 <?php foreach ($cartItems as $item): ?>
-                    <?php echo $item['cart_id']; ?>:
-                        <?php echo $item['price']; ?>,
+                    <?php echo $item['cart_id']; ?>: <?php echo $item['price']; ?>,
                 <?php endforeach; ?>
             };
 
             async function updateQty(cartId, newQty, maxStock) {
                 if (newQty < 1) {
                     if (confirm('Remove this item from your cart?')) {
-                        removeItem(cartId, prices[cartId],
-                            parseInt(
-                                document.getElementById('qty-' + cartId).textContent));
+                        const qty = parseInt(
+                            document.getElementById('qty-' + cartId).textContent);
+                        removeItem(cartId, prices[cartId], qty);
                     }
                     return;
                 }
+
                 if (newQty > maxStock) {
                     alert('Only ' + maxStock + ' items in stock.');
                     return;
                 }
 
-                const res  = await fetch('actions/update_cart.php', {
+                const res  = await fetch(BASE_URL + 'actions/update_cart.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                     body: `cart_id=${cartId}&quantity=${newQty}`
                 });
                 const data = await res.json();
 
                 if (data.success) {
-                    // Update qty display
                     document.getElementById('qty-' + cartId).textContent = newQty;
 
-                    // Update item total
                     const itemTotal = prices[cartId] * newQty;
                     document.getElementById('total-' + cartId).textContent =
-                        '₱' + itemTotal.toFixed(2).replace(
-                            /\B(?=(\d{3})+(?!\d))/g, ',');
+                        '₱' + itemTotal.toFixed(2)
+                            .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-                    // Update buttons
                     const row     = document.getElementById('row-' + cartId);
                     const buttons = row.querySelectorAll('.qty-btn');
                     buttons[0].setAttribute('onclick',
                         `updateQty(${cartId}, ${newQty - 1}, ${maxStock})`);
                     buttons[1].setAttribute('onclick',
                         `updateQty(${cartId}, ${newQty + 1}, ${maxStock})`);
-                    buttons[0].parentElement.querySelector('.btn-remove')
-                        .setAttribute('onclick',
-                            `removeItem(${cartId}, ${prices[cartId]}, ${newQty})`);
 
                     refreshSummary(data.subtotal, data.shipping, data.total);
 
-                    // Update navbar badge
                     const badge = document.getElementById('cart-count');
                     if (badge) badge.textContent = data.cart_count;
                 }
             }
 
             async function removeItem(cartId, price, qty) {
-                const res  = await fetch('actions/remove_cart.php', {
+                const res  = await fetch(BASE_URL + 'actions/remove_cart.php', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
                     body: `cart_id=${cartId}`
                 });
                 const data = await res.json();
 
                 if (data.success) {
-                    const row = document.getElementById('row-' + cartId);
+                    const row            = document.getElementById('row-' + cartId);
                     row.style.opacity    = '0';
                     row.style.transition = 'opacity 0.3s';
+
                     setTimeout(() => {
                         row.remove();
                         refreshSummary(data.subtotal, data.shipping, data.total);
@@ -283,7 +278,6 @@
                         const badge = document.getElementById('cart-count');
                         if (badge) badge.textContent = data.cart_count;
 
-                        // Show empty state if no items left
                         const rows = document.querySelectorAll('.cart-row');
                         if (rows.length === 0) location.reload();
                     }, 300);
@@ -292,7 +286,8 @@
 
             async function clearCart() {
                 if (!confirm('Remove all items from your cart?')) return;
-                const res  = await fetch('actions/clear_cart.php', {
+
+                const res  = await fetch(BASE_URL + 'actions/clear_cart.php', {
                     method: 'POST'
                 });
                 const data = await res.json();
@@ -304,7 +299,7 @@
                     '₱' + parseFloat(subtotal).toFixed(2)
                         .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
-                const shipEl = document.getElementById('summary-shipping');
+                const shipEl     = document.getElementById('summary-shipping');
                 shipEl.innerHTML = shipping == 0
                     ? '<span class="free-ship">FREE</span>'
                     : '₱' + parseFloat(shipping).toFixed(2)
@@ -315,5 +310,8 @@
                         .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             }
         </script>
+
+
+
     </body>
 </html>
