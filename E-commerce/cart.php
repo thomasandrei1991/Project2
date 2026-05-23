@@ -127,11 +127,14 @@
 
                                 <!-- Remove -->
                                 <button class="btn-remove"
+                                    data-cart-id="<?php echo $item['cart_id']; ?>"
+                                    data-price="<?php echo $item['price']; ?>"
+                                    data-qty="<?php echo $item['quantity']; ?>"
+                                    title="Remove item"
                                     onclick="removeItem(
                                         <?php echo $item['cart_id']; ?>,
                                         <?php echo $item['price']; ?>,
-                                        <?php echo $item['quantity']; ?>)"
-                                    title="Remove item">
+                                        <?php echo $item['quantity']; ?>)">
                                     ✕
                                 </button>
 

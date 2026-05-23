@@ -1,4 +1,5 @@
 <?php
+ob_start();
 session_start();
 require_once __DIR__ . "/config/database.php";
 
@@ -12,17 +13,18 @@ $user_id = (int)$_SESSION['user_id'];
 // Fetch cart items
 $stmt = mysqli_prepare($conn,
     "SELECT c.id AS cart_id, c.quantity,
-            p.id AS product_id, p.name, p.price, p.image, p.stocks
+            p.id AS product_id, p.name, 
+            p.price, p.image, p.stocks
      FROM cart c
      JOIN products p ON c.product_id = p.id
      WHERE c.user_id = ?
      ORDER BY c.id DESC");
 mysqli_stmt_bind_param($stmt, 'i', $user_id);
 mysqli_stmt_execute($stmt);
-$cartItems = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+$cartItems = mysqli_fetch_all(
+    mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
 mysqli_stmt_close($stmt);
 
-// Redirect if cart is empty
 if (empty($cartItems)) {
     header("Location: " . BASE_URL . "cart.php");
     exit;
@@ -44,33 +46,33 @@ mysqli_stmt_execute($ustmt);
 $user = mysqli_fetch_assoc(mysqli_stmt_get_result($ustmt));
 mysqli_stmt_close($ustmt);
 
-$error   = "";
-$success = "";
+$error = "";
 
+// ── Handle POST before ANY HTML output ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fullname = trim($_POST['fullname']);
     $email    = trim($_POST['email']);
     $phone    = trim($_POST['phone']);
     $address  = trim($_POST['address']);
     $city     = trim($_POST['city']);
-    $zip      = trim($_POST['zip']);
+    $zip      = trim($_POST['zip'] ?? '');
     $payment  = $_POST['payment'] ?? 'cod';
 
-    if (empty($fullname) || empty($address) || 
+    if (empty($fullname) || empty($address) ||
         empty($city)     || empty($phone)) {
         $error = "Please fill in all required fields.";
     } else {
         $full_address = "$address, $city" . ($zip ? " $zip" : "");
 
-        // Begin transaction
         mysqli_begin_transaction($conn);
 
         try {
-            // Re-check stock for all items
+            // Check stock
             foreach ($cartItems as $item) {
                 $scheck = mysqli_prepare($conn,
                     "SELECT stocks FROM products WHERE id = ?");
-                mysqli_stmt_bind_param($scheck, 'i', $item['product_id']);
+                mysqli_stmt_bind_param($scheck, 'i',
+                    $item['product_id']);
                 mysqli_stmt_execute($scheck);
                 $srow = mysqli_fetch_assoc(
                     mysqli_stmt_get_result($scheck));
@@ -86,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert order
             $ostmt = mysqli_prepare($conn,
                 "INSERT INTO orders 
-                    (user_id, total, status, address) 
+                    (user_id, total, status, address)
                  VALUES (?, ?, 'pending', ?)");
             mysqli_stmt_bind_param($ostmt, 'ids',
                 $user_id, $total, $full_address);
@@ -97,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Insert order items + deduct stock
             foreach ($cartItems as $item) {
                 $istmt = mysqli_prepare($conn,
-                    "INSERT INTO order_items 
+                    "INSERT INTO order_items
                         (order_id, product_id, quantity, price)
                      VALUES (?, ?, ?, ?)");
                 mysqli_stmt_bind_param($istmt, 'iiid',
@@ -108,10 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 mysqli_stmt_execute($istmt);
                 mysqli_stmt_close($istmt);
 
-                // Deduct stock
                 $dstmt = mysqli_prepare($conn,
-                    "UPDATE products 
-                     SET stocks = stocks - ? 
+                    "UPDATE products
+                     SET stocks = stocks - ?
                      WHERE id = ?");
                 mysqli_stmt_bind_param($dstmt, 'ii',
                     $item['quantity'],
@@ -129,9 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             mysqli_commit($conn);
 
-            // Redirect to success page
-            header("Location: " . BASE_URL .
-                "order_success.php?id=$order_id");
+            // Clean buffer then redirect
+            ob_end_clean();
+            header("Location: " . BASE_URL . "order_success.php?id=" . $order_id);
             exit;
 
         } catch (Exception $e) {
@@ -140,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+// ── Only reach here if GET request or validation failed ──
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -147,9 +149,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout — ShopGreen</title>
-    <link rel="stylesheet" 
+    <link rel="stylesheet"
           href="<?php echo BASE_URL; ?>assets/css/style.css">
-    <link rel="stylesheet" 
+    <link rel="stylesheet"
           href="<?php echo BASE_URL; ?>assets/css/checkout.css">
 </head>
 <body>
@@ -159,40 +161,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <h1 class="page-title">🧾 Checkout</h1>
 
         <?php if ($error): ?>
-            <div class="alert alert-danger"><?php echo $error; ?></div>
+            <div class="alert alert-danger">
+                <?php echo $error; ?>
+            </div>
         <?php endif; ?>
 
         <form method="POST" action="">
         <div class="checkout-layout">
 
-            <!-- LEFT: Delivery + Payment -->
             <div class="checkout-left">
-
-                <!-- Delivery Info -->
                 <div class="checkout-card">
                     <h2>📍 Delivery Information</h2>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Full Name <span class="req">*</span></label>
+                            <label>Full Name
+                                <span class="req">*</span>
+                            </label>
                             <input type="text" name="fullname"
                                 value="<?php echo htmlspecialchars(
-                                    $_POST['fullname'] 
+                                    $_POST['fullname']
                                     ?? $user['fullname']); ?>"
-                                placeholder="Juan Dela Cruz" required>
+                                required>
                         </div>
                         <div class="form-group">
-                            <label>Email <span class="req">*</span></label>
+                            <label>Email
+                                <span class="req">*</span>
+                            </label>
                             <input type="email" name="email"
                                 value="<?php echo htmlspecialchars(
-                                    $_POST['email'] 
+                                    $_POST['email']
                                     ?? $user['email']); ?>"
-                                placeholder="juan@email.com" required>
+                                required>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Phone Number <span class="req">*</span></label>
+                        <label>Phone Number
+                            <span class="req">*</span>
+                        </label>
                         <input type="text" name="phone"
                             value="<?php echo htmlspecialchars(
                                 $_POST['phone'] ?? ''); ?>"
@@ -200,16 +207,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <div class="form-group">
-                        <label>Street Address <span class="req">*</span></label>
+                        <label>Street Address
+                            <span class="req">*</span>
+                        </label>
                         <input type="text" name="address"
                             value="<?php echo htmlspecialchars(
                                 $_POST['address'] ?? ''); ?>"
-                            placeholder="House No., Street, Barangay" required>
+                            placeholder="House No., Street, Barangay"
+                            required>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>City / Municipality <span class="req">*</span>
+                            <label>City / Municipality
+                                <span class="req">*</span>
                             </label>
                             <input type="text" name="city"
                                 value="<?php echo htmlspecialchars(
@@ -226,13 +237,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
 
-                <!-- Payment Method -->
                 <div class="checkout-card">
                     <h2>💳 Payment Method</h2>
                     <div class="payment-options">
 
                         <label class="payment-option">
-                            <input type="radio" name="payment" 
+                            <input type="radio" name="payment"
                                    value="cod" checked>
                             <div class="payment-box">
                                 <span class="pay-icon">🚚</span>
@@ -244,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </label>
 
                         <label class="payment-option">
-                            <input type="radio" name="payment" 
+                            <input type="radio" name="payment"
                                    value="gcash">
                             <div class="payment-box">
                                 <span class="pay-icon">📱</span>
@@ -256,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         </label>
 
                         <label class="payment-option">
-                            <input type="radio" name="payment" 
+                            <input type="radio" name="payment"
                                    value="bank">
                             <div class="payment-box">
                                 <span class="pay-icon">🏦</span>
@@ -271,7 +281,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </div>
 
-            <!-- RIGHT: Order Summary -->
             <div class="checkout-right">
                 <div class="checkout-card summary-card">
                     <h2>🛒 Order Summary</h2>
@@ -281,12 +290,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <div class="checkout-item">
                                 <div class="ci-img">
                                     <?php if (!empty($item['image'])): ?>
-                                        <img src="<?php echo BASE_URL; 
+                                        <img src="<?php echo BASE_URL;
                                             ?>assets/images/<?php
                                             echo htmlspecialchars(
                                                 $item['image']); ?>"
-                                            alt="<?php echo htmlspecialchars(
-                                                $item['name']); ?>">
+                                            alt="">
                                     <?php else: ?>
                                         <div class="no-img">🛍️</div>
                                     <?php endif; ?>
@@ -320,7 +328,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             <?php if ($shipping === 0): ?>
                                 <span class="free-ship">FREE</span>
                             <?php else: ?>
-                                ₱<?php echo number_format($shipping, 2); ?>
+                                ₱<?php echo number_format(
+                                    $shipping, 2); ?>
                             <?php endif; ?>
                         </span>
                     </div>
@@ -329,21 +338,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     <div class="summary-row summary-total">
                         <span>Total</span>
-                        <span>₱<?php echo number_format($total, 2); ?></span>
+                        <span>₱<?php echo number_format(
+                            $total, 2); ?></span>
                     </div>
 
-                    <button type="submit" 
-                            class="btn btn-primary btn-full place-order-btn">
+                    <button type="submit"
+                            class="btn btn-primary btn-full
+                                   place-order-btn">
                         Place Order →
                     </button>
 
                     <a href="<?php echo BASE_URL; ?>cart.php"
-                       class="btn btn-outline btn-full" 
+                       class="btn btn-outline btn-full"
                        style="margin-top:10px; text-align:center;">
                         ← Back to Cart
                     </a>
 
-                    <div class="secure-note">🔒 Secured & encrypted checkout</div>
+                    <div class="secure-note">
+                        🔒 Secured & encrypted checkout
+                    </div>
                 </div>
             </div>
 

@@ -89,28 +89,25 @@ mysqli_stmt_close($relStmt);
 
                 <?php if ($product['stocks'] > 0): ?>
                     <?php if (isset($_SESSION['user_id'])): ?>
-                        <form method="POST" action="actions/add_to_cart.php" 
-                              class="detail-add-form">
-                            <input type="hidden" name="product_id" 
-                                   value="<?php echo $product['id']; ?>">
+                        <form method="POST" action="<?php echo BASE_URL; ?>actions/add_to_cart.php" class="detail-add-form">
+                            <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
                             <div class="qty-row">
                                 <label>Quantity</label>
                                 <div class="qty-control">
-                                    <button type="button" 
-                                            onclick="changeQty(-1)">−</button>
-                                    <input type="number" name="quantity" 
-                                           id="qty" value="1" 
-                                           min="1" 
-                                           max="<?php echo $product['stocks']; ?>">
-                                    <button type="button" 
-                                            onclick="changeQty(1)">+</button>
+                                    <button type="button" onclick="changeQty(-1)">−</button>
+                                    <input type="number" name="quantity"
+                                        id="qty" value="1"
+                                        min="1"
+                                        max="<?php echo $product['stocks']; ?>">
+                                    <button type="button" onclick="changeQty(1)">+</button>
                                 </div>
                             </div>
                             <div class="detail-actions">
                                 <button type="submit" class="btn btn-primary btn-full">
                                     🛒 Add to Cart
                                 </button>
-                                <a href="index.php" class="btn btn-outline btn-full">
+                                <a href="<?php echo BASE_URL; ?>index.php"
+                                class="btn btn-outline btn-full">
                                     ← Continue Shopping
                                 </a>
                             </div>
@@ -159,12 +156,11 @@ mysqli_stmt_close($relStmt);
                     <?php endforeach; ?>
                 </div>
             </div>
-        <?php endif; ?>
-
+            <?php endif; ?>
     </div>
-
     <?php include 'includes/footer.php'; ?>
     <script>
+        // Quantity control
         function changeQty(delta) {
             const input = document.getElementById('qty');
             const max   = parseInt(input.max);
@@ -173,6 +169,53 @@ mysqli_stmt_close($relStmt);
             if (val > max) val = max;
             input.value = val;
         }
+
+        // Add to cart via AJAX — prevents page redirect
+        const detailForm = document.querySelector('.detail-add-form');
+        if (detailForm) {
+            detailForm.addEventListener('submit', async function(e) {
+                e.preventDefault(); // ← stops normal form submission
+
+                const btn  = this.querySelector('button[type="submit"]');
+                const orig = btn.innerHTML;
+
+                btn.innerHTML = '⏳ Adding...';
+                btn.disabled  = true;
+
+                try {
+                    const res  = await fetch(this.action, {
+                        method: 'POST',
+                        body: new FormData(this)
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        btn.innerHTML          = '✅ Added to Cart!';
+                        btn.style.background   = 'var(--green-dark)';
+                        btn.style.borderColor  = 'var(--green-dark)';
+
+                        // Update navbar cart badge
+                        const badge = document.getElementById('cart-count');
+                        if (badge) badge.textContent = data.cart_count;
+
+                        setTimeout(() => {
+                            btn.innerHTML         = orig;
+                            btn.style.background  = '';
+                            btn.style.borderColor = '';
+                            btn.disabled          = false;
+                        }, 2000);
+                    } else {
+                        btn.innerHTML = '❌ Failed. Try again.';
+                        btn.disabled  = false;
+                    }
+                } catch (err) {
+                    btn.innerHTML = '❌ Error. Try again.';
+                    btn.disabled  = false;
+                }
+            });
+        }
     </script>
+</body>
+</html>                                    
 </body>
 </html>

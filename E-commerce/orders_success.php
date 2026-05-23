@@ -45,9 +45,9 @@ mysqli_stmt_close($istmt);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Order Placed! — ShopGreen</title>
-    <link rel="stylesheet" 
+    <link rel="stylesheet"
           href="<?php echo BASE_URL; ?>assets/css/style.css">
-    <link rel="stylesheet" 
+    <link rel="stylesheet"
           href="<?php echo BASE_URL; ?>assets/css/checkout.css">
 </head>
 <body>
@@ -56,22 +56,21 @@ mysqli_stmt_close($istmt);
     <div class="container">
         <div class="success-wrapper">
 
-            <!-- Success Banner -->
             <div class="success-banner">
                 <div class="success-icon">✅</div>
                 <h1>Order Placed Successfully!</h1>
                 <p>Thank you, <strong>
-                    <?php echo htmlspecialchars($_SESSION['fullname']); ?>
+                    <?php echo htmlspecialchars(
+                        $_SESSION['fullname']); ?>
                     </strong>! Your order has been received.</p>
                 <div class="order-number">
-                    Order #<?php echo str_pad($order_id, 5, '0', STR_PAD_LEFT); ?>
+                    Order #<?php echo str_pad(
+                        $order_id, 5, '0', STR_PAD_LEFT); ?>
                 </div>
             </div>
 
-            <!-- Order Details -->
             <div class="success-grid">
 
-                <!-- Items -->
                 <div class="checkout-card">
                     <h2>📦 Items Ordered</h2>
                     <div class="checkout-items">
@@ -79,7 +78,7 @@ mysqli_stmt_close($istmt);
                             <div class="checkout-item">
                                 <div class="ci-img">
                                     <?php if (!empty($item['image'])): ?>
-                                        <img src="<?php echo BASE_URL; 
+                                        <img src="<?php echo BASE_URL;
                                             ?>assets/images/<?php
                                             echo htmlspecialchars(
                                                 $item['image']); ?>"
@@ -105,13 +104,12 @@ mysqli_stmt_close($istmt);
                     </div>
                     <div class="summary-divider"></div>
                     <div class="summary-row summary-total">
-                        <span>Total Paid</span>
+                        <span>Total</span>
                         <span>₱<?php echo number_format(
                             $order['total'], 2); ?></span>
                     </div>
                 </div>
 
-                <!-- Delivery Info -->
                 <div class="checkout-card">
                     <h2>📍 Delivery Details</h2>
                     <div class="delivery-detail-row">
@@ -123,8 +121,8 @@ mysqli_stmt_close($istmt);
                     </div>
                     <div class="delivery-detail-row">
                         <span class="dd-label">Status</span>
-                        <span class="order-status 
-                            status-<?php echo $order['status']; ?>">
+                        <span class="badge badge-<?php 
+                            echo $order['status']; ?>">
                             <?php echo ucfirst($order['status']); ?>
                         </span>
                     </div>
@@ -135,8 +133,8 @@ mysqli_stmt_close($istmt);
                                 strtotime($order['created_at'])); ?>
                         </span>
                     </div>
-
-                    <div class="success-actions">
+                    <div class="success-actions" 
+                         style="margin-top:24px;">
                         <a href="<?php echo BASE_URL; ?>orders.php"
                            class="btn btn-primary btn-full">
                             View My Orders
